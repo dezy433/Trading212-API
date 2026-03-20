@@ -509,7 +509,12 @@ class CFD(object):
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
 
-        return r.json()
+        try:
+            return r.json()
+        except Exception as e:
+            print(f"✗ Error: {e}")
+            print(f"Raw response text: {r.text}")
+            return {}
 
     def auth_validate(self) -> dict:
         """
