@@ -375,10 +375,8 @@ class Apit212:
 
                 sleep(self.delay) # Wait for main page to load
                 
-                # Break after one attempt (or on success)
-                break
-
                 timeout -= 1
+                break
 
             d.get(f"https://{mode}.trading212.com") # Switch account type
 
@@ -453,6 +451,7 @@ class CFD(object):
     def __init__(self, cred: Apit212, dealer: str = "AVUSUK", lang: str = "EN") -> None:
 
         self.api = cred
+        self.logger = logging.getLogger(__name__)
 
         # Create time object
         self.now = datetime.now()
@@ -467,19 +466,33 @@ class CFD(object):
         self.headers = cred.headers
 
         # Get account info
-        account = self.get_account()[f"{cred.mode}Accounts"]
+        account_data = self.get_account()
+        account_key = f"{cred.mode}Accounts"
+        if not isinstance(account_data, dict) or account_key not in account_data:
+            raise RuntimeError(
+                f"Failed to retrieve account data. "
+                f"The session may not be authenticated. Response: {account_data}"
+            )
+        account = account_data[account_key]
 
+        accountId = None
         for info in account:
-            if info["tradingType"] == "CFD":
+            if info.get("tradingType") == "CFD":
                 accountId = info["id"]
-            else:
-                pass
+
+        if accountId is None:
+            raise RuntimeError("No CFD account found in the account list.")
 
         # Confirm correct account
-        authAccount = self.auth_validate()["accountId"]
+        auth_data = self.auth_validate()
+        if not isinstance(auth_data, dict) or "accountId" not in auth_data:
+            raise RuntimeError(
+                f"Failed to validate authentication. Response: {auth_data}"
+            )
+        authAccount = auth_data["accountId"]
 
         if str(authAccount) != str(accountId):
-            # switch accound    
+            # switch account
             self.__switch(account_id=accountId)
 
         else:
@@ -509,7 +522,20 @@ class CFD(object):
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
 
-        return r.json()
+        return self._safe_json(r)
+
+    def _safe_json(self, r) -> dict:
+        """
+        Safely parse a JSON response. Returns a dict with an error code if
+        the response body is not valid JSON or the request was not successful.
+        """
+        try:
+            return r.json()
+        except ValueError:
+            self.logger.error(
+                f"Non-JSON response (status={r.status_code}): {r.text[:500]!r}"
+            )
+            return {"code": "invalidResponse", "status": r.status_code, "body": r.text[:200]}
 
     def auth_validate(self) -> dict:
         """
@@ -517,7 +543,7 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
  
     def authenticate(self) -> dict:
         """
@@ -526,7 +552,7 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
 
     def get_timezone(self) -> dict:
         """
@@ -535,7 +561,7 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v2/time-zones", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
     
     def get_account(self) -> dict:
         """
@@ -543,7 +569,7 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
 
     def get_funds(self) -> dict:
         """
@@ -551,7 +577,7 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/rest/v2/customer/accounts/funds", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
 
     def get_max_min(self, instrument: str) -> dict:
         """
@@ -564,7 +590,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/v1/equity/value-order/min-max", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_summary(self) -> dict:
         """
@@ -575,7 +601,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/trading/v1/accounts/summary",
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_companies(self) -> list:
         """
@@ -584,7 +610,7 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/companies", headers=self.headers)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_instruments_info(self, instrument: str) -> dict:
         """
@@ -596,7 +622,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/v2/instruments/additional-info/{instrument}", 
                          headers=self.headers)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_order_info(self, instrument: str, quantity: float) -> dict:
         """
@@ -613,7 +639,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/v1/tradingAdditionalInfo", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_deviations(self, instruments: list and str,  _useaskprice: str = "false") -> dict:
         """
@@ -629,7 +655,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/charting/v1/watchlist/batch/deviations",
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_position(self, position_id: str) -> dict:
         """
@@ -638,7 +664,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/positionHistory/{position_id}",
                          headers=self.headers,)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_all_results(self, page_number: int) -> dict:
         """
@@ -652,7 +678,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/results",
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_order_hist(self, page_number: int, _tz: str = "01:00") -> dict:
         """
@@ -672,7 +698,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/orders", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
     def get_position_hist(self, page_number: int,  _tz: str = "01:00") -> dict:
         """
@@ -691,7 +717,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/positions",
                          headers=self.headers, params=params)
 
-        return r.json()
+        return self._safe_json(r)
 
     def set_limits(self, position_id: str, TP: float = None, SL: float = None, notify: str = "NONE") -> dict:
         """
@@ -739,7 +765,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/rest/v2/pending-orders/associated/{position_id}",
                          headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return self._safe_json(r)
         
     def add_trailing_stop(self, position_id: str, distance: float, notify: str = "NONE"):
         """
@@ -786,7 +812,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/rest/v2/pending-orders/associated/{position_id}", 
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
         
     def fundamentals(self, instrument: str, language: str = "en") -> dict:
         """
@@ -800,7 +826,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/companies/v2/fundamentals",
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
     def profit_losses(self, instrument: str) -> dict:
         """
@@ -811,7 +837,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/trading/profit-losses", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def high_low(self, instrument: str) -> dict:
         """
@@ -822,7 +848,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/charting/v2/batch/high-low", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def additional_info(self, instrument: str) -> dict:
         """
@@ -831,7 +857,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/v2/instruments/additional-info/{instrument}",
                          headers=self.headers,)
         
-        return r.json()
+        return self._safe_json(r)
 
     def settings(self, instrument: str) -> dict:
         """
@@ -841,7 +867,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/account/instruments/settings", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def market_order(self,
                      instrument: str,
@@ -863,7 +889,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/trading/open-positions", 
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
 
     def limit_order(self,
                      instrument: str,
@@ -883,8 +909,8 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/pending-orders/entry-dep-limit-stop/{instrument}", 
                           headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
-    
+        return self._safe_json(r)
+
     def close_position(self, position_id: str, current_price: float) -> dict:
         """
         """
@@ -901,7 +927,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/trading/open-positions/close/{position_id}", 
                             headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return self._safe_json(r)
     
     def cancel_all_orders(self) -> dict:
         """
@@ -914,7 +940,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/pending-orders/cancel",
                             headers=self.headers, data=data)
         
-        return r.json()
+        return self._safe_json(r)
     
     def cancel_order(self, order_id: str) -> dict:
         """
@@ -924,7 +950,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/pending-orders/entry/{order_id}",
                             headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return self._safe_json(r)
     
     def _reset(self, account_id: int, amount: int, currency_code: str):
         """
@@ -938,7 +964,7 @@ class CFD(object):
         r = requests.post(f"{self.url}/rest/v1/account/reset-with-sum",
                         headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return self._safe_json(r)
         
     def fast_price(self, instrument: str,  _useaskprice: str = "false") -> float:
         """
@@ -951,7 +977,7 @@ class CFD(object):
                          headers=self.headers, data=json.dumps(payload))
         
         if r.status_code == 200:
-            price = r.json()
+            price = self._safe_json(r)
             return float(price[0]["response"]["candles"][0][-2])
         else:
             return None
@@ -971,7 +997,7 @@ class CFD(object):
                              data=json.dumps(payload))
         
         if r.status_code == 200:
-            return r.json()
+            return self._safe_json(r)
         else:
             return None
     
@@ -995,7 +1021,7 @@ class CFD(object):
         
         if r.status_code == 200:
             result = []
-            data = r.json()
+            data = self._safe_json(r)
 
             for i in enumerate(data):
                 try:
@@ -1015,6 +1041,8 @@ class Equity(object):
 
     def __init__(self, cred: Apit212, dealer: str = "AVUSUK", lang: str = "EN") -> None:
 
+        self.logger = logging.getLogger(__name__)
+
         # Create time object
         self.now = datetime.now()
 
@@ -1028,23 +1056,50 @@ class Equity(object):
         self.headers = cred.headers
 
         # Get account info
-        account = self.get_account()[f"{cred.mode}Accounts"]
+        account_data = self.get_account()
+        account_key = f"{cred.mode}Accounts"
+        if not isinstance(account_data, dict) or account_key not in account_data:
+            raise RuntimeError(
+                f"Failed to retrieve account data. "
+                f"The session may not be authenticated. Response: {account_data}"
+            )
+        account = account_data[account_key]
 
+        accountId = None
         for info in account:
-            if info["tradingType"] == "EQUITY":
+            if info.get("tradingType") == "EQUITY":
                 accountId = info["id"]
-            else:
-                pass
+
+        if accountId is None:
+            raise RuntimeError("No EQUITY account found in the account list.")
 
         # Confirm correct account
-        authAccount = self.auth_validate()["accountId"]
+        auth_data = self.auth_validate()
+        if not isinstance(auth_data, dict) or "accountId" not in auth_data:
+            raise RuntimeError(
+                f"Failed to validate authentication. Response: {auth_data}"
+            )
+        authAccount = auth_data["accountId"]
 
         if str(authAccount) != str(accountId):
-            # switch accound    
+            # switch account
             self.__switch(account_id=accountId)
 
         else:
             pass
+
+    def _safe_json(self, r) -> dict:
+        """
+        Safely parse a JSON response. Returns a dict with an error code if
+        the response body is not valid JSON or the request was not successful.
+        """
+        try:
+            return r.json()
+        except ValueError:
+            self.logger.error(
+                f"Non-JSON response (status={r.status_code}): {r.text[:500]!r}"
+            )
+            return {"code": "invalidResponse", "status": r.status_code, "body": r.text[:200]}
 
     def __switch(self, account_id: int) -> dict:
         """
@@ -1065,7 +1120,7 @@ class Equity(object):
             self.headers["Cookie"] = ""
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
-        return r.json()
+        return self._safe_json(r)
     
     def get_account(self) -> dict:
         """
@@ -1073,7 +1128,7 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
 
     def auth_validate(self) -> dict:
         """
@@ -1081,7 +1136,7 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
  
     def authenticate(self) -> dict:
         """
@@ -1090,7 +1145,7 @@ class Equity(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate",  headers=self.headers)
 
-        return r.json()
+        return self._safe_json(r)
 
     def close(self, 
                    instrument: str, 
@@ -1107,7 +1162,7 @@ class Equity(object):
                              data=json.dumps(payload))
         
         if r.status_code == 200:
-            return r.json()
+            return self._safe_json(r)
         else:
             return None
 
@@ -1129,7 +1184,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/added-costs", 
                         headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
     
     def market_order(self, 
                     instrument: str, 
@@ -1147,7 +1202,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
     
     def limit_order(self, 
                     instrument: str, 
@@ -1165,7 +1220,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
   
     def stop_limit(self, 
                     instrument: str, 
@@ -1184,7 +1239,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                         headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return self._safe_json(r)
     
     def cancel_order(self,
                      position_id: str) -> dict:
@@ -1193,7 +1248,7 @@ class Equity(object):
 
         r = requests.get(url=f"{self.url}/rest/public/v2/equity/order/{position_id}",  headers=self.headers)
         
-        return r.json()
+        return self._safe_json(r)
     
     def min_max(self, instrument: str, currency: str) -> dict:
         """
@@ -1204,7 +1259,7 @@ class Equity(object):
         r = requests.get(url=f"{self.url}/rest/v1/equity/value-order/min-max",  
                          headers=self.headers, params=params)
         
-        return r.json()
+        return self._safe_json(r)
 
 
 class Apitkey:
