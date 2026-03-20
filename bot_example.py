@@ -45,8 +45,11 @@ def main():
         print(f"Connecting to Trading212 ({mode} mode)...")
         print(f"Username: {username[:10]}...")  # Show only first 10 chars
         
-        # Initialize the client with your credentials
-        client = Apit212(username=username, password=password, mode=mode)
+        # Initialize the client
+        client = Apit212()
+        
+        # Setup with credentials
+        client.setup(username=username, password=password, mode=mode, _beauty=False)
         
         print("✓ Connected to Trading 212!")
         
