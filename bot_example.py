@@ -6,7 +6,7 @@ Run this script to connect to your Trading 212 account and execute trading opera
 import os
 import re
 from dotenv import load_dotenv
-from apit212_legacy import Apit212
+from apit212_legacy import Apit212, CFD
 
 # Load environment variables from .env file (if it exists)
 load_dotenv()
@@ -45,31 +45,34 @@ def main():
         print(f"Connecting to Trading212 ({mode} mode)...")
         print(f"Username: {username[:10]}...")  # Show only first 10 chars
         
-        # Initialize the client
-        client = Apit212()
+        # Initialize the authentication client
+        auth_client = Apit212()
         
-        # Setup with credentials
-        client.setup(username=username, password=password, mode=mode, _beauty=False)
+        # Setup with credentials (handles login via Selenium)
+        auth_client.setup(username=username, password=password, mode=mode, _beauty=False)
         
         print("✓ Connected to Trading 212!")
         
+        # Initialize the CFD trading client (uses authenticated cookies)
+        cfd_client = CFD(cred=auth_client)
+        
         # Get account information
         print("\n--- Account Information ---")
-        account_info = client.get_account()
+        account_info = cfd_client.get_account()
         print(f"Account: {account_info}")
         
         # Check if validation passed
-        if client.auth_validate():
+        if cfd_client.auth_validate():
             print("\n✓ Authentication validated successfully!")
         
         # Get funds information
         print("\n--- Account Funds ---")
-        funds = client.get_funds()
+        funds = cfd_client.get_funds()
         print(f"Funds: {funds}")
         
         # Get summary (positions)
         print("\n--- Account Summary ---")
-        summary = client.get_summary()
+        summary = cfd_client.get_summary()
         print(f"Summary: {summary}")
         
         print("\n✓ Bot execution completed successfully!")

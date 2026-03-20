@@ -1,9 +1,16 @@
-from apit212 import *
+from apit212_legacy import Apit212, CFD
+import os
+from dotenv import load_dotenv
 
-username = "flock92_@account.com"
-password = "password/"
+load_dotenv()
 
-client = Apit212(username=${SECRET_TRADING212_USERNAME} , password=${SECRET_TRADING212_PASSWORD}, mode='demo')
+username = os.getenv("TRADING212_USERNAME", "test@example.com")
+password = os.getenv("TRADING212_PASSWORD", "test_password")
+mode = os.getenv("TRADING212_MODE", "demo")
+
+# Initialize and setup the client
+client = Apit212()
+client.setup(username=username, password=password, mode=mode)
 
 
 #print(client.auth_validate())

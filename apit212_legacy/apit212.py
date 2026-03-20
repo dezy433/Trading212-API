@@ -8,16 +8,15 @@ from datetime import timedelta
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from threading import Thread
 from pandas import DataFrame
 from pandas import read_pickle
 import logging
 import sys
 import os
-from typing import Any
 import pandas as pd
-
-from selenium.common.exceptions import ScreenshotException
 
 class _Constant:
 
@@ -260,15 +259,18 @@ class Apit212:
         # If connection failed reconnects
         if self.fh.check_file(filename="_cookies") == False: 
 
-            # Setup webdriver
-            options = webdriver.FirefoxOptions()
+            # Setup webdriver - Use Chrome for better GitHub Actions compatibility
+            options = webdriver.ChromeOptions()
             options.add_argument('--log-level=3')
-            options.add_argument('-headless')
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')  # For GitHub Actions
+            options.add_argument('--disable-dev-shm-usage')  # For GitHub Actions
+            options.add_argument('--disable-gpu')
 
             # start webdriver & get main page
             self.constant._update_txt(func_name="Selenium")
 
-            d = webdriver.Firefox(options=options)
+            d = webdriver.Chrome(options=options)
 
             d.get(url=URL)
 
@@ -286,51 +288,97 @@ class Apit212:
 
                 sleep(self.delay) # wait for main page to load
 
-                try:
-                    d.find_element(By.XPATH, f"{COOKIE_POPUP}").click()
-                    self.logger.info('cookie popup closed')
-                except Exception as em:
-                    self.logger.error(f'Initial popup: {em}') 
-                else:
-                    pass
+                # Try multiple selectors for cookie popup
+                cookie_selectors = COOKIE_POPUP if isinstance(COOKIE_POPUP, list) else [COOKIE_POPUP]
+                for selector in cookie_selectors:
+                    try:
+                        d.find_element(By.XPATH, selector).click()
+                        self.logger.info('cookie popup closed')
+                        break
+                    except Exception as em:
+                        self.logger.debug(f'Cookie popup attempt failed for {selector}: {em}')
+                        continue
 
                 sleep(self.interval)
 
-                try:
-                    d.find_element(By.XPATH, f"{LOGIN_BUTTON}").click()
-                    self.logger.info('login form opened')
-                except Exception as em:
-                    self.logger.error(f'Login Form: {em}')
-                else:
-                    pass
+                # Try multiple selectors for login button
+                login_selectors = LOGIN_BUTTON if isinstance(LOGIN_BUTTON, list) else [LOGIN_BUTTON]
+                for selector in login_selectors:
+                    try:
+                        d.find_element(By.XPATH, selector).click()
+                        self.logger.info('login form opened')
+                        break
+                    except Exception as em:
+                        self.logger.debug(f'Login button attempt failed for {selector}: {em}')
+                        continue
                 
-                try:
-                    d.find_element(By.NAME, "email").send_keys(username)
-                    self.logger.info('Username input: sentKeys')
-                except Exception as em:
-                    self.logger.error(f'Username input: {em}')
-                else:
-                    pass
+                sleep(1)  # Wait for form to load
+                
+                # Try multiple selectors for email field
+                email_found = False
+                email_selectors = [
+                    (By.NAME, "email"),
+                    (By.CSS_SELECTOR, "input[type='email']"),
+                    (By.CSS_SELECTOR, "input[name*='email']"),
+                    (By.XPATH, "//input[@type='text'][1]"),  # First text input
+                ]
+                for selector_type, selector_value in email_selectors:
+                    try:
+                        d.find_element(selector_type, selector_value).send_keys(username)
+                        self.logger.info('Username input: sentKeys')
+                        email_found = True
+                        break
+                    except Exception as em:
+                        self.logger.debug(f'Email field attempt failed for {selector_type}={selector_value}: {em}')
+                        continue
+                
+                if not email_found:
+                    self.logger.error('Could not find email input field')
 
-                try:
-                    d.find_element(By.NAME, "password").send_keys(password)
-                    self.logger.info('Password input: sentKeys')
-                except Exception as em:
-                    self.logger.error(f'Password input: {em}')
-                else:
-                    pass
+                sleep(0.5)
+                
+                # Try multiple selectors for password field
+                password_found = False
+                password_selectors = [
+                    (By.NAME, "password"),
+                    (By.CSS_SELECTOR, "input[type='password']"),
+                    (By.CSS_SELECTOR, "input[name*='password']"),
+                    (By.XPATH, "//input[@type='password']"),
+                ]
+                for selector_type, selector_value in password_selectors:
+                    try:
+                        d.find_element(selector_type, selector_value).send_keys(password)
+                        self.logger.info('Password input: sentKeys')
+                        password_found = True
+                        break
+                    except Exception as em:
+                        self.logger.debug(f'Password field attempt failed for {selector_type}={selector_value}: {em}')
+                        continue
+                
+                if not password_found:
+                    self.logger.error('Could not find password input field')
 
-                try:
-                    d.find_element(By.XPATH, f"{SUBMIT_BUTTON}").click()
-                    self.logger.info('Submit form successful.')
-                except Exception as em:
-                    self.logger.error(f'Submit form: {em}')
-                else:
-                    pass
+                sleep(0.5)
+
+                # Try multiple selectors for submit button
+                submit_selectors = SUBMIT_BUTTON if isinstance(SUBMIT_BUTTON, list) else [SUBMIT_BUTTON]
+                submit_found = False
+                for selector in submit_selectors:
+                    try:
+                        d.find_element(By.XPATH, selector).click()
+                        self.logger.info('Submit form successful.')
+                        submit_found = True
+                        break
+                    except Exception as em:
+                        self.logger.debug(f'Submit button attempt failed for {selector}: {em}')
+                        continue
 
                 sleep(self.delay) # Wait for main page to load
                 
+                # Break after one attempt (or on success)
                 break
+
+                timeout -= 1
 
             d.get(f"https://{mode}.trading212.com") # Switch account type
 
