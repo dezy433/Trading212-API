@@ -1,3 +1,2 @@
-from apit212.apitconstant import *
-from apit212.Apit212 import *
-from apit212.cfdScrape import *
+from .Constant import *
+from .apit212 import *

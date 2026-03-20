@@ -3,7 +3,8 @@ from apit212 import *
 username = "flock92_@account.com"
 password = "password/"
 
-client = Apit212(username=username, password=password, mode='demo')
+client = Apit212(username=${SECRET_TRADING212_USERNAME} , password=${SECRET_TRADING212_PASSWORD}, mode='demo')
+
 
 #print(client.auth_validate())
 #print(client.get_account())
