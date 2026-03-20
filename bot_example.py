@@ -47,6 +47,7 @@ def main():
         
         # Initialize the authentication client
         auth_client = Apit212()
+        auth_client._saveCookies = True  # Enable cookie saving for debugging
         
         # Setup with credentials (handles login via Selenium)
         auth_client.setup(username=username, password=password, mode=mode, _beauty=False)

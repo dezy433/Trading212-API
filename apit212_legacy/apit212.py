@@ -1,3 +1,5 @@
+from selenium.webdriver.chrome.service import Service
+import shutil
 # This script was created by flock92 to simplify using the trading212 api
 
 import requests
@@ -226,8 +228,9 @@ class Apit212:
         self.fh = _FileHandler()
         self.constant = _Constant()
 
-    def setup(self, username: str, password: str, mode: str, timeout: int = 2, _beauty: bool = True) -> None:
+    def setup(self, username: str, password: str, mode: str, timeout: int = 180, _beauty: bool = True) -> None:
         """
+        Setup Trading212 authentication. Default timeout is 180 seconds (3 minutes).
         """
         # clear console
         if _beauty == True:
@@ -270,7 +273,11 @@ class Apit212:
             # start webdriver & get main page
             self.constant._update_txt(func_name="Selenium")
 
-            d = webdriver.Chrome(options=options)
+            chromedriver_path = shutil.which("chromedriver")
+            if not chromedriver_path:
+                raise RuntimeError("ChromeDriver not found in PATH.")
+            service = Service(chromedriver_path)
+            d = webdriver.Chrome(service=service, options=options)
 
             d.get(url=URL)
 
@@ -284,16 +291,23 @@ class Apit212:
                 self.constant.end_error(error_msg=errmsg)
                 return 0
 
-            while timeout > 0:
+            # Use time-based timeout instead of iteration-based
+            start_time = datetime.now()
+            max_duration = timedelta(seconds=timeout)
+            
+            while (datetime.now() - start_time) < max_duration:
 
                 sleep(self.delay) # wait for main page to load
 
                 # Try multiple selectors for cookie popup
                 cookie_selectors = COOKIE_POPUP if isinstance(COOKIE_POPUP, list) else [COOKIE_POPUP]
+                cookie_closed = False
                 for selector in cookie_selectors:
                     try:
                         d.find_element(By.XPATH, selector).click()
                         self.logger.info('cookie popup closed')
+                        print("✓ Cookie popup closed")
+                        cookie_closed = True
                         break
                     except Exception as em:
                         self.logger.debug(f'Cookie popup attempt failed for {selector}: {em}')
@@ -303,15 +317,23 @@ class Apit212:
 
                 # Try multiple selectors for login button
                 login_selectors = LOGIN_BUTTON if isinstance(LOGIN_BUTTON, list) else [LOGIN_BUTTON]
+                login_found = False
                 for selector in login_selectors:
                     try:
                         d.find_element(By.XPATH, selector).click()
                         self.logger.info('login form opened')
+                        print("✓ Login form opened")
+                        login_found = True
                         break
                     except Exception as em:
                         self.logger.debug(f'Login button attempt failed for {selector}: {em}')
                         continue
                 
+                if not login_found:
+                    print("✗ Could not find login button - page structure may have changed")
+                    self.constant.end_error("Could not find login button")
+                    return 0
+
                 sleep(1)  # Wait for form to load
                 
                 # Try multiple selectors for email field
@@ -326,6 +348,7 @@ class Apit212:
                     try:
                         d.find_element(selector_type, selector_value).send_keys(username)
                         self.logger.info('Username input: sentKeys')
+                        print("✓ Username entered")
                         email_found = True
                         break
                     except Exception as em:
@@ -333,7 +356,9 @@ class Apit212:
                         continue
                 
                 if not email_found:
-                    self.logger.error('Could not find email input field')
+                    print("✗ Could not find email input field")
+                    self.constant.end_error("Could not find email field")
+                    return 0
 
                 sleep(0.5)
                 
@@ -349,6 +374,7 @@ class Apit212:
                     try:
                         d.find_element(selector_type, selector_value).send_keys(password)
                         self.logger.info('Password input: sentKeys')
+                        print("✓ Password entered")
                         password_found = True
                         break
                     except Exception as em:
@@ -356,7 +382,9 @@ class Apit212:
                         continue
                 
                 if not password_found:
-                    self.logger.error('Could not find password input field')
+                    print("✗ Could not find password input field")
+                    self.constant.end_error("Could not find password field")
+                    return 0
 
                 sleep(0.5)
 
@@ -367,29 +395,37 @@ class Apit212:
                     try:
                         d.find_element(By.XPATH, selector).click()
                         self.logger.info('Submit form successful.')
+                        print("✓ Login form submitted")
                         submit_found = True
                         break
                     except Exception as em:
                         self.logger.debug(f'Submit button attempt failed for {selector}: {em}')
                         continue
 
+                if not submit_found:
+                    print("✗ Could not find submit button")
+                    self.constant.end_error("Could not find submit button")
+                    return 0
+
                 sleep(self.delay) # Wait for main page to load
                 
                 # Break after one attempt (or on success)
+                print("✓ Login sequence completed")
                 break
-
-                timeout -= 1
 
             d.get(f"https://{mode}.trading212.com") # Switch account type
 
             sleep(self.delay)
             
             self.constant._update_txt(func_name="cookies")
+            print(f"\n🍪 Retrieving cookies...")
 
             cookies = d.get_cookies() # Get cookies
+            print(f"✓ Got {len(cookies)} cookies")
 
             if self._saveCookies == True:
                 self.fh.create_file(filename="_cookies", data=cookies)
+                print(f"✓ Cookies saved to file")
 
             self.headers['Cookie'] = ""
 
@@ -407,6 +443,7 @@ class Apit212:
             sleep(self.interval)
     
             r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
+            print(f"✓ Auth validation: {r.status_code}")
 
             if r.status_code == 200:
                 self.constant.end()
@@ -509,6 +546,8 @@ class CFD(object):
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
 
+        print("DEBUG: get_account response status:", r.status_code)
+        print("DEBUG: get_account response text:\n", r.text)
         return r.json()
 
     def auth_validate(self) -> dict:
@@ -542,8 +581,13 @@ class CFD(object):
         returns a dictionary containing account data
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
-
-        return r.json()
+        print("DEBUG: get_account response status:", r.status_code)
+        print("DEBUG: get_account response text:\n", r.text)
+        try:
+            return r.json()
+        except Exception as e:
+            print(f"ERROR: Failed to parse JSON: {e}")
+            return {"error": "Invalid JSON", "status_code": r.status_code, "response_text": r.text}
 
     def get_funds(self) -> dict:
         """
@@ -615,7 +659,7 @@ class CFD(object):
         
         return r.json()
 
-    def get_deviations(self, instruments: list and str,  _useaskprice: str = "false") -> dict:
+    def get_deviations(self, instruments: list | str,  _useaskprice: str = "false") -> dict:
         """
         """
         if isinstance(instruments, str):
