@@ -34,8 +34,8 @@ jobs:
 
       - name: Run Trading Bot
         env:
-          SECRET_TRADING212_USERNAME: ${{ secrets.SECRET_TRADING212_USERNAME }}
-          SECRET_TRADING212_PASSWORD: ${{ secrets.SECRET_TRADING212_PASSWORD }}
+          TRADING212_USERNAME: ${{ secrets.TRADING212_USERNAME }}
+          TRADING212_PASSWORD: ${{ secrets.TRADING212_PASSWORD }}
         run: python bot_example.py
 
       - name: Upload logs (if failed)
