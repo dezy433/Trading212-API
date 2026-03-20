@@ -5,6 +5,7 @@ Run this script to connect to your Trading 212 account and execute trading opera
 
 import os
 import re
+import sys
 from dotenv import load_dotenv
 from apit212_legacy import Apit212, CFD
 
@@ -82,6 +83,7 @@ def main():
         print(f"✗ Error: {e}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,14 @@ import sys
 import os
 import pandas as pd
 
+
+def _safe_json(response) -> dict:
+    """Safely parse a JSON response, returning an error dict if parsing fails."""
+    try:
+        return response.json()
+    except (ValueError, requests.exceptions.JSONDecodeError) as e:
+        return {"error": "Invalid JSON response", "status_code": response.status_code, "detail": str(e)}
+
 class _Constant:
 
     running = False
@@ -504,23 +512,35 @@ class CFD(object):
         self.headers = cred.headers
 
         # Get account info
-        account = self.get_account()[f"{cred.mode}Accounts"]
+        account_data = self.get_account()
+        accounts_key = f"{cred.mode}Accounts"
+        if "error" in account_data or accounts_key not in account_data:
+            raise RuntimeError(
+                f"Failed to retrieve account info (status={account_data.get('status_code', 'unknown')}). "
+                "Check credentials and session cookies."
+            )
+        account = account_data[accounts_key]
 
+        accountId = None
         for info in account:
             if info["tradingType"] == "CFD":
                 accountId = info["id"]
-            else:
-                pass
+
+        if accountId is None:
+            raise RuntimeError("No CFD account found in the Trading212 account list.")
 
         # Confirm correct account
-        authAccount = self.auth_validate()["accountId"]
+        auth_data = self.auth_validate()
+        if "error" in auth_data or "accountId" not in auth_data:
+            raise RuntimeError(
+                f"Failed to validate authentication (status={auth_data.get('status_code', 'unknown')}). "
+                "Session may have expired."
+            )
+        authAccount = auth_data["accountId"]
 
         if str(authAccount) != str(accountId):
-            # switch accound    
+            # switch account
             self.__switch(account_id=accountId)
-
-        else:
-            pass
 
     def __switch(self, account_id: int) -> dict:
         """
@@ -538,17 +558,11 @@ class CFD(object):
         # update cookies in headers
         cookies = r.cookies
 
-        # update cookies in headers
-        cookies = r.cookies
-
         for cookie in cookies:
             self.headers["Cookie"] = ""
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
-
-        print("DEBUG: get_account response status:", r.status_code)
-        print("DEBUG: get_account response text:\n", r.text)
-        return r.json()
+        return _safe_json(r)
 
     def auth_validate(self) -> dict:
         """
@@ -556,7 +570,7 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
  
     def authenticate(self) -> dict:
         """
@@ -565,7 +579,7 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
 
     def get_timezone(self) -> dict:
         """
@@ -574,20 +588,15 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v2/time-zones", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
     
     def get_account(self) -> dict:
         """
         returns a dictionary containing account data
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
-        print("DEBUG: get_account response status:", r.status_code)
-        print("DEBUG: get_account response text:\n", r.text)
-        try:
-            return r.json()
-        except Exception as e:
-            print(f"ERROR: Failed to parse JSON: {e}")
-            return {"error": "Invalid JSON", "status_code": r.status_code, "response_text": r.text}
+
+        return _safe_json(r)
 
     def get_funds(self) -> dict:
         """
@@ -595,7 +604,7 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/rest/v2/customer/accounts/funds", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
 
     def get_max_min(self, instrument: str) -> dict:
         """
@@ -608,7 +617,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/v1/equity/value-order/min-max", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_summary(self) -> dict:
         """
@@ -619,7 +628,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/trading/v1/accounts/summary",
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def get_companies(self) -> list:
         """
@@ -628,7 +637,7 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/companies", headers=self.headers)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_instruments_info(self, instrument: str) -> dict:
         """
@@ -640,7 +649,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/v2/instruments/additional-info/{instrument}", 
                          headers=self.headers)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_order_info(self, instrument: str, quantity: float) -> dict:
         """
@@ -657,7 +666,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/v1/tradingAdditionalInfo", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_deviations(self, instruments: list | str,  _useaskprice: str = "false") -> dict:
         """
@@ -673,7 +682,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/charting/v1/watchlist/batch/deviations",
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def get_position(self, position_id: str) -> dict:
         """
@@ -682,7 +691,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/positionHistory/{position_id}",
                          headers=self.headers,)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_all_results(self, page_number: int) -> dict:
         """
@@ -696,7 +705,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/results",
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_order_hist(self, page_number: int, _tz: str = "01:00") -> dict:
         """
@@ -716,7 +725,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/orders", 
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
     def get_position_hist(self, page_number: int,  _tz: str = "01:00") -> dict:
         """
@@ -735,7 +744,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/reports/positions",
                          headers=self.headers, params=params)
 
-        return r.json()
+        return _safe_json(r)
 
     def set_limits(self, position_id: str, TP: float = None, SL: float = None, notify: str = "NONE") -> dict:
         """
@@ -783,7 +792,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/rest/v2/pending-orders/associated/{position_id}",
                          headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return _safe_json(r)
         
     def add_trailing_stop(self, position_id: str, distance: float, notify: str = "NONE"):
         """
@@ -830,7 +839,7 @@ class CFD(object):
         r = requests.put(url=f"{self.url}/rest/v2/pending-orders/associated/{position_id}", 
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
         
     def fundamentals(self, instrument: str, language: str = "en") -> dict:
         """
@@ -844,7 +853,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/companies/v2/fundamentals",
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
     def profit_losses(self, instrument: str) -> dict:
         """
@@ -855,7 +864,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/trading/profit-losses", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def high_low(self, instrument: str) -> dict:
         """
@@ -866,7 +875,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/charting/v2/batch/high-low", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def additional_info(self, instrument: str) -> dict:
         """
@@ -875,7 +884,7 @@ class CFD(object):
         r = requests.get(url=f"{self.url}/rest/v2/instruments/additional-info/{instrument}",
                          headers=self.headers,)
         
-        return r.json()
+        return _safe_json(r)
 
     def settings(self, instrument: str) -> dict:
         """
@@ -885,7 +894,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/account/instruments/settings", 
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def market_order(self,
                      instrument: str,
@@ -907,7 +916,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/trading/open-positions", 
                          headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
 
     def limit_order(self,
                      instrument: str,
@@ -927,7 +936,7 @@ class CFD(object):
         r = requests.post(url=f"{self.url}/rest/v2/pending-orders/entry-dep-limit-stop/{instrument}", 
                           headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return _safe_json(r)
     
     def close_position(self, position_id: str, current_price: float) -> dict:
         """
@@ -945,7 +954,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/trading/open-positions/close/{position_id}", 
                             headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return _safe_json(r)
     
     def cancel_all_orders(self) -> dict:
         """
@@ -958,7 +967,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/pending-orders/cancel",
                             headers=self.headers, data=data)
         
-        return r.json()
+        return _safe_json(r)
     
     def cancel_order(self, order_id: str) -> dict:
         """
@@ -968,7 +977,7 @@ class CFD(object):
         r = requests.delete(url=f"{self.url}/rest/v2/pending-orders/entry/{order_id}",
                             headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return _safe_json(r)
     
     def _reset(self, account_id: int, amount: int, currency_code: str):
         """
@@ -982,7 +991,7 @@ class CFD(object):
         r = requests.post(f"{self.url}/rest/v1/account/reset-with-sum",
                         headers=self.headers, data=json.dumps(payload))
 
-        return r.json()
+        return _safe_json(r)
         
     def fast_price(self, instrument: str,  _useaskprice: str = "false") -> float:
         """
@@ -995,7 +1004,9 @@ class CFD(object):
                          headers=self.headers, data=json.dumps(payload))
         
         if r.status_code == 200:
-            price = r.json()
+            price = _safe_json(r)
+            if isinstance(price, dict) and "error" in price:
+                return None
             return float(price[0]["response"]["candles"][0][-2])
         else:
             return None
@@ -1015,7 +1026,7 @@ class CFD(object):
                              data=json.dumps(payload))
         
         if r.status_code == 200:
-            return r.json()
+            return _safe_json(r)
         else:
             return None
     
@@ -1039,7 +1050,10 @@ class CFD(object):
         
         if r.status_code == 200:
             result = []
-            data = r.json()
+            data = _safe_json(r)
+
+            if isinstance(data, dict) and "error" in data:
+                return None
 
             for i in enumerate(data):
                 try:
@@ -1072,23 +1086,35 @@ class Equity(object):
         self.headers = cred.headers
 
         # Get account info
-        account = self.get_account()[f"{cred.mode}Accounts"]
+        account_data = self.get_account()
+        accounts_key = f"{cred.mode}Accounts"
+        if "error" in account_data or accounts_key not in account_data:
+            raise RuntimeError(
+                f"Failed to retrieve account info (status={account_data.get('status_code', 'unknown')}). "
+                "Check credentials and session cookies."
+            )
+        account = account_data[accounts_key]
 
+        accountId = None
         for info in account:
             if info["tradingType"] == "EQUITY":
                 accountId = info["id"]
-            else:
-                pass
+
+        if accountId is None:
+            raise RuntimeError("No Equity account found in the Trading212 account list.")
 
         # Confirm correct account
-        authAccount = self.auth_validate()["accountId"]
+        auth_data = self.auth_validate()
+        if "error" in auth_data or "accountId" not in auth_data:
+            raise RuntimeError(
+                f"Failed to validate authentication (status={auth_data.get('status_code', 'unknown')}). "
+                "Session may have expired."
+            )
+        authAccount = auth_data["accountId"]
 
         if str(authAccount) != str(accountId):
-            # switch accound    
+            # switch account
             self.__switch(account_id=accountId)
-
-        else:
-            pass
 
     def __switch(self, account_id: int) -> dict:
         """
@@ -1109,7 +1135,7 @@ class Equity(object):
             self.headers["Cookie"] = ""
             self.headers["Cookie"] += f"{cookie.name}={cookie.value};"
 
-        return r.json()
+        return _safe_json(r)
     
     def get_account(self) -> dict:
         """
@@ -1117,7 +1143,7 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
 
     def auth_validate(self) -> dict:
         """
@@ -1125,7 +1151,7 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
  
     def authenticate(self) -> dict:
         """
@@ -1134,7 +1160,7 @@ class Equity(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate",  headers=self.headers)
 
-        return r.json()
+        return _safe_json(r)
 
     def close(self, 
                    instrument: str, 
@@ -1151,7 +1177,7 @@ class Equity(object):
                              data=json.dumps(payload))
         
         if r.status_code == 200:
-            return r.json()
+            return _safe_json(r)
         else:
             return None
 
@@ -1173,7 +1199,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/added-costs", 
                         headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
     
     def market_order(self, 
                     instrument: str, 
@@ -1191,7 +1217,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
     
     def limit_order(self, 
                     instrument: str, 
@@ -1209,7 +1235,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                           headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
   
     def stop_limit(self, 
                     instrument: str, 
@@ -1228,7 +1254,7 @@ class Equity(object):
         r = requests.post(url=f"{self.url}/rest/public/v2/equity/order",  
                         headers=self.headers, data=json.dumps(payload))
         
-        return r.json()
+        return _safe_json(r)
     
     def cancel_order(self,
                      position_id: str) -> dict:
@@ -1237,7 +1263,7 @@ class Equity(object):
 
         r = requests.get(url=f"{self.url}/rest/public/v2/equity/order/{position_id}",  headers=self.headers)
         
-        return r.json()
+        return _safe_json(r)
     
     def min_max(self, instrument: str, currency: str) -> dict:
         """
@@ -1248,7 +1274,7 @@ class Equity(object):
         r = requests.get(url=f"{self.url}/rest/v1/equity/value-order/min-max",  
                          headers=self.headers, params=params)
         
-        return r.json()
+        return _safe_json(r)
 
 
 class Apitkey:
@@ -1278,11 +1304,11 @@ class Apitkey:
             response = requests.get(url=f"{self.url}/metadata/exchanges", headers=self.headers)
 
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def exchange_list(self) -> dict:
             """
@@ -1294,11 +1320,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def instrument_list(self) -> dict:
             """        
@@ -1310,7 +1336,7 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             else:
                 pass
 
@@ -1323,11 +1349,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def create_pie(self, 
                        instrument_shares: dict, 
@@ -1364,11 +1390,11 @@ class Apitkey:
                                     headers=headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def delete_pie(self, pie_id: str) -> dict:
             """
@@ -1385,11 +1411,11 @@ class Apitkey:
                                     headers=self.headers, params=param)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def fetch_pie(self, pie_id) -> dict:
             """
@@ -1410,11 +1436,11 @@ class Apitkey:
                                     headers=headers, params=param)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def update_pie(self, pie_id: str, 
                        instrument_shares: dict, 
@@ -1450,11 +1476,11 @@ class Apitkey:
                                     json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def equity_orders(self) -> dict:
             """
@@ -1466,11 +1492,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def limit_order(self, 
                         limit_price: float, 
@@ -1504,11 +1530,11 @@ class Apitkey:
                                     headers=self.headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def market_order(self, instrument: str, quantity: float) -> dict:
             """
@@ -1534,11 +1560,11 @@ class Apitkey:
                                     headers=self.headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def stop_order(self, 
                        instrument: str, 
@@ -1572,11 +1598,11 @@ class Apitkey:
                                     headers=self.headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def stop_limit_order(self,
                              limit_price: float, 
@@ -1614,11 +1640,11 @@ class Apitkey:
                                     headers=self.headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def cancel_order(self, order_id) -> dict:
             """
@@ -1635,11 +1661,11 @@ class Apitkey:
                                     headers=self.headers, params=param)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
         
         def fetch_order(self, order_id) -> dict:
             """
@@ -1655,11 +1681,11 @@ class Apitkey:
                                     headers=self.headers, params=param)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def account_data(self) -> dict:
             """
@@ -1673,11 +1699,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def account_meta(self) -> dict:
             """
@@ -1690,7 +1716,7 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             else:
                 return response.status_code
                 pass
@@ -1706,7 +1732,7 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             else:
                 pass
 
@@ -1723,11 +1749,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def order_history(self, instrument: str, limit: int = 20, cursor: int = 0) -> dict:
             """
@@ -1751,11 +1777,11 @@ class Apitkey:
                                     headers=self.headers, params=params)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def paid_out_dividends(self, instrument: str, limit: int = 20, cursor: int = 0) -> dict:
             """
@@ -1778,7 +1804,7 @@ class Apitkey:
                                     headers=self.headers, params=params)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             else:
                 pass
             
@@ -1792,11 +1818,11 @@ class Apitkey:
                                     headers=self.headers)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def export_csv(self, 
                        time_from: str,
@@ -1837,11 +1863,11 @@ class Apitkey:
                                     headers=self.headers, json=payload)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
 
         def transactions(self, cursor: int = 0, limit: int = 20) -> dict:
             """
@@ -1862,11 +1888,11 @@ class Apitkey:
                                     headers=self.headers, params=params)
             
             if response.status_code == 200:
-                return response.json()
+                return _safe_json(response)
             elif response.status_code == 404:
                 return response.status_code
             else:
-                return response.json()
+                return _safe_json(response)
             
 
 class Tickers:
