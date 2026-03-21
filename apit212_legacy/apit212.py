@@ -522,8 +522,13 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
- 
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 auth_validate error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
+
     def authenticate(self) -> dict:
         """
         re-establish session if session has ended and update headers
@@ -531,7 +536,12 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate", headers=self.headers)
 
-        return r.json()
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 authenticate error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def get_timezone(self) -> dict:
         """
@@ -540,15 +550,24 @@ class CFD(object):
 
         r = requests.get(url=f"{self.url}/rest/v2/time-zones", headers=self.headers)
 
-        return r.json()
-    
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_timezone error: {e}")
+            return {}
+
     def get_account(self) -> dict:
         """
         returns a dictionary containing account data
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
 
-        return r.json()
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_account error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def get_funds(self) -> dict:
         """
@@ -556,7 +575,12 @@ class CFD(object):
         """
         r = requests.get(url=f"{self.url}/rest/v2/customer/accounts/funds", headers=self.headers)
 
-        return r.json()
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_funds error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def get_max_min(self, instrument: str) -> dict:
         """
@@ -564,12 +588,16 @@ class CFD(object):
         :return: dict
         """
 
-        params = {'instrumentCode': {instrument}}
+        params = {'instrumentCode': instrument}
 
         r = requests.get(url=f"{self.url}/v1/equity/value-order/min-max", 
                          headers=self.headers, params=params)
-        
-        return r.json()
+
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_max_min error: {e}")
+            return {}
 
     def get_summary(self) -> dict:
         """
@@ -579,8 +607,13 @@ class CFD(object):
 
         r = requests.post(url=f"{self.url}/rest/trading/v1/accounts/summary",
                           headers=self.headers, data=json.dumps(payload))
-        
-        return r.json()
+
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_summary error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def get_companies(self) -> list:
         """
@@ -588,8 +621,12 @@ class CFD(object):
         """
 
         r = requests.get(url=f"{self.url}/rest/companies", headers=self.headers)
-        
-        return r.json()
+
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_companies error: {e}")
+            return []
 
     def get_instruments_info(self, instrument: str) -> dict:
         """
@@ -1078,7 +1115,12 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
 
-        return r.json()
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 get_account error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def auth_validate(self) -> dict:
         """
@@ -1086,8 +1128,13 @@ class Equity(object):
         """
         r = requests.get(url=f"{self.url}/auth/validate", headers=self.headers)
 
-        return r.json()
- 
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 auth_validate error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
+
     def authenticate(self) -> dict:
         """
         re-establish session if session has ended and update headers
@@ -1095,7 +1142,12 @@ class Equity(object):
 
         r = requests.get(url=f"{self.url}/rest/v1/webclient/authenticate",  headers=self.headers)
 
-        return r.json()
+        try:
+            return r.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"\u2717 authenticate error: {e}")
+            print(f"Raw response text: {r.text[:500]}")
+            return {}
 
     def close(self, 
                    instrument: str, 
