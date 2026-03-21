@@ -1,0 +1,36 @@
+name: Run Trading212 Bot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3  # 2:30 rounded up to 3 minutes
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Trading212 bot
+        env:
+          TRADING212_USERNAME: ${{ secrets.TRADING212_USERNAME }}
+          TRADING212_PASSWORD: ${{ secrets.TRADING212_PASSWORD }}
+          TRADING212_MODE: demo
+        run: |
+          python3 bot_example.py

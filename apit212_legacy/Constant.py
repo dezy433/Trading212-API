@@ -25,11 +25,31 @@ COOKIE_POPUP = [
     "/html/body/div[1]/main/div[3]/div/div[2]/div[2]/div[2]/div[1]"  # Fallback to original
 ]
 
+
+# Email and password field selectors (add more generic options)
+EMAIL_FIELD_SELECTORS = [
+    ("NAME", "email"),
+    ("CSS_SELECTOR", "input[type='email']"),
+    ("CSS_SELECTOR", "input[name*='email']"),
+    ("XPATH", "//input[@type='text'][1]"),  # First text input
+    ("CSS_SELECTOR", "input[data-testid='login-form-email-input-base-component']"),
+    ("XPATH", "//input[@data-testid='login-form-email-input-base-component']"),
+]
+
+PASSWORD_FIELD_SELECTORS = [
+    ("NAME", "password"),
+    ("CSS_SELECTOR", "input[type='password']"),
+    ("CSS_SELECTOR", "input[name*='password']"),
+    ("XPATH", "//input[@type='password']"),
+    ("CSS_SELECTOR", "input[data-testid='login-form-password-input-base-component']"),
+    ("XPATH", "//input[@data-testid='login-form-password-input-base-component']"),
+]
 # Submit button - more robust selector
 SUBMIT_BUTTON = [
     "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log')]",  # Button containing "Login/Log in"
     "//button[@type='submit']",
     "//button[contains(@class, 'submit') or contains(@class, 'login')]",
+    "//button[contains(text(), 'Sign in') or contains(text(), 'Log in') or contains(text(), 'Login')]",
     "/html/body/div[1]/main/div[3]/div/div[2]/div/div[2]/div/form/div[5]"  # Fallback
 ]
 

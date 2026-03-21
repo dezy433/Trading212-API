@@ -211,6 +211,27 @@ class _FileHandler:
 
 class Apit212:
 
+    def __init__(self) -> None:
+        self.headers = HEADERS
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        if not self.logger.hasHandlers():
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        self.fh = _FileHandler()
+        self.constant = _Constant()
+
+    # ...existing code...
+
+    # In the login loop, before searching for email field:
+    # DEBUG: Write all input fields and their attributes to a file for troubleshooting
+    # (This code should be inside the login loop, not at class level)
+
+    # ...existing code...
+
     interval = 0.5
     implicit = 30
     delay = 10
@@ -218,11 +239,15 @@ class Apit212:
     _saveCookies = False
 
     def __init__(self) -> None:
-
         self.headers = HEADERS
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.DEBUG)
-
+        if not self.logger.hasHandlers():
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
         self.fh = _FileHandler()
         self.constant = _Constant()
 
@@ -284,8 +309,20 @@ class Apit212:
                 self.constant.end_error(error_msg=errmsg)
                 return 0
 
-            while timeout > 0:
 
+            import time
+            max_attempts = 5
+            attempt = 0
+            success = False
+            start_time = time.time()
+            timeout_seconds = 150  # 2:30
+            while attempt < max_attempts:
+                if time.time() - start_time > timeout_seconds:
+                    self.logger.error('Global login timeout reached (2:30)')
+                    self.constant.end_error(error_msg='Login process timed out after 2:30')
+                    d.quit()
+                    return 0
+                attempt += 1
                 sleep(self.delay) # wait for main page to load
 
                 # Try multiple selectors for cookie popup
@@ -295,8 +332,7 @@ class Apit212:
                         d.find_element(By.XPATH, selector).click()
                         self.logger.info('cookie popup closed')
                         break
-                    except Exception as em:
-                        self.logger.debug(f'Cookie popup attempt failed for {selector}: {em}')
+                    except Exception:
                         continue
 
                 sleep(self.interval)
@@ -308,55 +344,58 @@ class Apit212:
                         d.find_element(By.XPATH, selector).click()
                         self.logger.info('login form opened')
                         break
-                    except Exception as em:
-                        self.logger.debug(f'Login button attempt failed for {selector}: {em}')
+                    except Exception:
                         continue
-                
+
                 sleep(1)  # Wait for form to load
-                
+
                 # Try multiple selectors for email field
+
                 email_found = False
-                email_selectors = [
-                    (By.NAME, "email"),
-                    (By.CSS_SELECTOR, "input[type='email']"),
-                    (By.CSS_SELECTOR, "input[name*='email']"),
-                    (By.XPATH, "//input[@type='text'][1]"),  # First text input
-                ]
-                for selector_type, selector_value in email_selectors:
+                for selector_type, selector_value in EMAIL_FIELD_SELECTORS:
+                    by = getattr(By, selector_type.upper().replace(' ', '_'), None)
+                    if by is None:
+                        continue
                     try:
-                        d.find_element(selector_type, selector_value).send_keys(username)
+                        d.find_element(by, selector_value).send_keys(username)
                         self.logger.info('Username input: sentKeys')
                         email_found = True
                         break
-                    except Exception as em:
-                        self.logger.debug(f'Email field attempt failed for {selector_type}={selector_value}: {em}')
+                    except Exception:
                         continue
-                
+
                 if not email_found:
                     self.logger.error('Could not find email input field')
+                    if attempt == max_attempts:
+                        self.constant.end_error(error_msg='Could not find email input field after multiple attempts')
+                        d.quit()
+                        return 0
+                    continue
 
                 sleep(0.5)
-                
+
                 # Try multiple selectors for password field
+
                 password_found = False
-                password_selectors = [
-                    (By.NAME, "password"),
-                    (By.CSS_SELECTOR, "input[type='password']"),
-                    (By.CSS_SELECTOR, "input[name*='password']"),
-                    (By.XPATH, "//input[@type='password']"),
-                ]
-                for selector_type, selector_value in password_selectors:
+                for selector_type, selector_value in PASSWORD_FIELD_SELECTORS:
+                    by = getattr(By, selector_type.upper().replace(' ', '_'), None)
+                    if by is None:
+                        continue
                     try:
-                        d.find_element(selector_type, selector_value).send_keys(password)
+                        d.find_element(by, selector_value).send_keys(password)
                         self.logger.info('Password input: sentKeys')
                         password_found = True
                         break
-                    except Exception as em:
-                        self.logger.debug(f'Password field attempt failed for {selector_type}={selector_value}: {em}')
+                    except Exception:
                         continue
-                
+
                 if not password_found:
                     self.logger.error('Could not find password input field')
+                    if attempt == max_attempts:
+                        self.constant.end_error(error_msg='Could not find password input field after multiple attempts')
+                        d.quit()
+                        return 0
+                    continue
 
                 sleep(0.5)
 
@@ -369,16 +408,20 @@ class Apit212:
                         self.logger.info('Submit form successful.')
                         submit_found = True
                         break
-                    except Exception as em:
-                        self.logger.debug(f'Submit button attempt failed for {selector}: {em}')
+                    except Exception:
                         continue
 
                 sleep(self.delay) # Wait for main page to load
-                
-                # Break after one attempt (or on success)
-                break
 
-                timeout -= 1
+                # If all fields found and submitted, break
+                if email_found and password_found and submit_found:
+                    success = True
+                    break
+
+            if not success:
+                self.constant.end_error(error_msg='Login process failed after multiple attempts')
+                d.quit()
+                return 0
 
             d.get(f"https://{mode}.trading212.com") # Switch account type
 
@@ -451,39 +494,44 @@ class Apit212:
 class CFD(object):
 
     def __init__(self, cred: Apit212, dealer: str = "AVUSUK", lang: str = "EN") -> None:
-
         self.api = cred
-
-        # Create time object
         self.now = datetime.now()
-
-        # Get Mode
         self.mode = cred.mode
-
-        # Get the correct url
         self.url = f'https://{cred.mode}.trading212.com'
-
-        # headers
         self.headers = cred.headers
 
-        # Get account info
-        account = self.get_account()[f"{cred.mode}Accounts"]
+        # Get account info with error handling
+        try:
+            account_data = self.get_account()
+            key = f"{cred.mode}Accounts"
+            if key not in account_data or not isinstance(account_data[key], list):
+                raise ValueError(f"Account data missing or invalid: {account_data}")
+            account = account_data[key]
+        except Exception as e:
+            print(f"✗ Error retrieving account info: {e}")
+            self.account_error = True
+            return
 
+        accountId = None
         for info in account:
-            if info["tradingType"] == "CFD":
-                accountId = info["id"]
-            else:
-                pass
+            if info.get("tradingType") == "CFD":
+                accountId = info.get("id")
+        if accountId is None:
+            print("✗ Error: No CFD account found.")
+            self.account_error = True
+            return
 
         # Confirm correct account
-        authAccount = self.auth_validate()["accountId"]
+        try:
+            authAccount = self.auth_validate().get("accountId")
+        except Exception as e:
+            print(f"✗ Error validating authentication: {e}")
+            self.account_error = True
+            return
 
         if str(authAccount) != str(accountId):
-            # switch accound    
             self.__switch(account_id=accountId)
-
-        else:
-            pass
+        # else: pass
 
     def __switch(self, account_id: int) -> dict:
         """
@@ -547,8 +595,11 @@ class CFD(object):
         returns a dictionary containing account data
         """
         r = requests.get(url=f"{self.url}/rest/v1/accounts", headers=self.headers)
-
-        return r.json()
+        try:
+            return r.json()
+        except Exception:
+            print(f"✗ Error: Could not decode account response as JSON. Response text: {r.text}")
+            return {}
 
     def get_funds(self) -> dict:
         """

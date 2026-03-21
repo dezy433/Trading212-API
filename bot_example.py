@@ -37,8 +37,8 @@ def main():
         print("  - TRADING212_USERNAME (or USERNAME)")
         print("  - TRADING212_PASSWORD (or PASSWORD)")
         print("\nOr add them to .env file:")
-        print("  TRADING212_USERNAME=your-email@example.com")
-        print("  TRADING212_PASSWORD=your-password")
+        print("  TRADING212_USERNAME=dez")
+        print("  TRADING212_PASSWORD=na")
         return
     
     try:
