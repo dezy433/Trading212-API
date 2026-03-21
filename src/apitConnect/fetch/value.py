@@ -21,7 +21,7 @@ async def value(
     url = f"https://{self.mode}.services.trading212.com/rest/v2/cfd-trading/orders/market/value"
     base_url = "https://app.trading212.com/"
 
-    payload = {"ticker": {ticker}, "value": value, "targetPrice": target_price}
+    payload = {"ticker": ticker, "value": value, "targetPrice": target_price}
 
     if stoploss != 0.0:
         payload["stopLoss"] = stoploss
